@@ -1,0 +1,7 @@
+#plugin name
+name: CustomFieldsSearch
+version: 0.1
+
+#about this plugin
+
+init_app: CustomFieldsSearch::App::init_app
