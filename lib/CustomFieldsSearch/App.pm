@@ -34,41 +34,40 @@ package CustomFieldsSearch::App;
 use strict;
 use CustomFields::Util qw( get_meta );
 
-my $search_hit_method;
-
-sub init_app {
+sub init_request {
 	my ($plugin, $app) = @_;
 
 	if ($app->isa('MT::App::Search')) {
-		my $cf = MT->component('CustomFields');
-
-		require CGI;
-		my $q = new CGI;
-		my @fields = $q->param('CustomFieldsSearchField');
+		my $enable = $app->param('CustomFieldsSearch');
+		my @fields = $app->param('CustomFieldsSearchField');
 
 		local $SIG{__WARN__} = sub {  }; 
-
-		if (! @fields) {
-			$cf->{search_hit_method} = \&MT::App::Search::_search_hit;
-			*MT::App::Search::_search_hit = sub {
-				require CustomFields::App::Search;
-				my $method_ref = CustomFields::App::Search->can('_search_hit');
-				return $method_ref->($cf, @_);
-			};
-		}
-		else {
-			$search_hit_method = \&MT::App::Search::_search_hit;
-			*MT::App::Search::_search_hit = sub {
-				return &_search_hit(\@fields, @_);
-			};
+		if ($enable) {
+			if (! @fields) {
+				my $cf = MT->component('CustomFields');
+				$cf->{search_hit_method} = \&MT::App::Search::_search_hit;
+				*MT::App::Search::_search_hit = sub {
+					require CustomFields::App::Search;
+					my $method_ref = CustomFields::App::Search->can(
+						'_search_hit'
+					);
+					return $method_ref->($cf, @_);
+				};
+			}
+			else {
+				my $hit_method = \&MT::App::Search::_search_hit;
+				*MT::App::Search::_search_hit = sub {
+					return &_search_hit(\@fields, $hit_method, @_);
+				};
+			}
 		}
 	}
 }
 
 sub _search_hit {
-    my ($fields, $app, $entry) = @_;
+    my ($fields, $hit_method, $app, $entry) = @_;
 
-    return 1 if &{$search_hit_method}($app, $entry); # If query matches non-CustomFields, why waste time?
+    return 1 if &{$hit_method}($app, $entry); # If query matches non-CustomFields, why waste time?
     return 0 if $app->{searchparam}{SearchElement} ne 'entries'; # If it hasn't matched and isn't searching on entries, again why waste time?
 
 	my $meta = get_meta($entry);
