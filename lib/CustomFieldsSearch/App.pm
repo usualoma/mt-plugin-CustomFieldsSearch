@@ -38,11 +38,11 @@ sub init_request {
 
 	if ($app->isa('MT::App::Search')) {
 		my $enable = $app->param('CustomFieldsSearch');
-		my @fields = $app->param('CustomFieldsSearchField');
 
 		if ($enable) {
 			local $SIG{__WARN__} = sub {  }; 
 			if ($MT::VERSION < 4.2) {
+				my @fields = $app->param('CustomFieldsSearchField');
 				if (! @fields) {
 					my $cf = MT->component('CustomFields');
 					$cf->{search_hit_method} = \&MT::App::Search::_search_hit;
@@ -62,41 +62,42 @@ sub init_request {
 				}
 			}
 			else {
-				my $execute = \&MT::App::Search::execute;
-				*MT::App::Search::execute = sub {
-					return &execute($execute, \@fields, @_);
-				};
+				my $query_parse = \&MT::App::Search::query_parse;
+				*MT::App::Search::query_parse = \&query_parse;
 			}
 		}
 	}
 }
 
-sub execute {
-	my $execute = shift;
-	my $fields = shift;
-	my ($app, $terms, $args ) = @_;
+sub query_parse {
+    my $app = shift;
+    my ( %columns ) = @_;
+
+	# CustomFields matching.
+	my $terms = [];
+	my @fields = $app->param('CustomFieldsSearchField');
 
 	require CustomFields::Field;
 	require CustomFields::App::CMS;
 	require MT::Entry;
 
-	my %terms = (
+	my $field_terms = {
 		obj_type => 'entry',
-	);
+	};
 
-	if (@$fields) {
-		$terms{'tag'} = $fields;
+	if (@fields) {
+		$field_terms->{'tag'} = \@fields;
 	}
-	my @c_fields = CustomFields::Field->load(\%terms);
+	my @c_fields = CustomFields::Field->load($field_terms);
 
 	my $types = CustomFields::App::CMS->load_customfield_types;
-	my @terms = ();
+	my $meta_terms = [];
 	foreach my $f (@c_fields) {
 		if (! $types->{$f->type}) {
 			next;
 		}
 
-		push(@terms, (scalar(@terms) ? '-or' : ()), [
+		push(@$meta_terms, (scalar(@$meta_terms) ? '-or' : ()), [
 			{
 				'type' => 'field.' . $f->basename,
 			},
@@ -110,23 +111,45 @@ sub execute {
 	}
 
 	my $meta_pkg = MT::Entry->meta_pkg;
-	my $iter = $meta_pkg->search(\@terms, {fetchonly => [ 'entry_id' ]});
+	my $iter = $meta_pkg->search($meta_terms, {fetchonly => [ 'entry_id' ]});
 	my %ids = ();
 	while (my $e = $iter->()) {
 		$ids{$e->entry_id} = 1;
 	}
 
 	if (%ids) {
-		for (my $i = scalar(@$terms); $i >= 0; $i--) {
-			if ((ref $terms->[$i]) eq 'ARRAY') {
-				push(@{ $terms->[$i] }, '-or', {
-					'id' => [ keys %ids ],
-				});
-			}
-		}
+		push(@$terms, (scalar(@$terms) ? '-or' : ()), {
+			'id' => [ keys %ids ],
+		});
 	}
 
-	return $execute->(@_);
+	if (@$terms) {
+		# match for customfields.
+		return { terms => $terms };
+	}
+
+	# not match for customfields.
+
+	# Entry's column setting.
+	my $args = {};
+
+	my @ignores = $app->param('CustomFieldsSearchIgnore');
+	foreach my $i (@ignores) {
+		delete $columns{$i};
+	}
+
+	my @column_names = keys %columns;
+
+	if (@column_names) {
+		$args = {
+			'freetext' => {
+				columns       => \@column_names,
+				search_string => $app->{search_string}
+			}
+		};
+	}
+
+	{ args => $args };
 }
 
 sub _search_hit {
