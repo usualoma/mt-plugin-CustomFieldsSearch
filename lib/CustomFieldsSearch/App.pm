@@ -76,13 +76,13 @@ sub query_parse {
 	# CustomFields matching.
 	my $terms = [];
 	my @fields = $app->param('CustomFieldsSearchField');
+	my $obj_type = $app->{searchparam}{Type};
 
 	require CustomFields::Field;
 	require CustomFields::App::CMS;
-	require MT::Entry;
 
 	my $field_terms = {
-		obj_type => 'entry',
+		obj_type => $obj_type,
 	};
 
 	if (@fields) {
@@ -110,11 +110,13 @@ sub query_parse {
 		]);
 	}
 
-	my $meta_pkg = MT::Entry->meta_pkg;
-	my $iter = $meta_pkg->search($meta_terms, {fetchonly => [ 'entry_id' ]});
+	my $obj_class = $app->model($obj_type);
+	my $obj_id_key = $obj_class->datasource . '_id';
+	my $meta_pkg = $obj_class->meta_pkg;
+	my $iter = $meta_pkg->search($meta_terms, {fetchonly => [ $obj_id_key ]});
 	my %ids = ();
 	while (my $e = $iter->()) {
-		$ids{$e->entry_id} = 1;
+		$ids{$e->$obj_id_key} = 1;
 	}
 
 	if (%ids) {
