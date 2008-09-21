@@ -96,23 +96,35 @@ sub execute {
 			next;
 		}
 
-		push(@terms, {
-			$types->{$f->type}->{'column_def'} => {
-				'like' => '%' . $app->{search_string} . '%',
+		push(@terms, (scalar(@terms) ? '-or' : ()), [
+			{
+				'type' => 'field.' . $f->basename,
 			},
-		});
+			'-and',
+			{
+				$types->{$f->type}->{'column_def'} => {
+					'like' => '%' . $app->{search_string} . '%',
+				},
+			},
+		]);
 	}
 
 	my $meta_pkg = MT::Entry->meta_pkg;
-	my $iter = $meta_pkg->search(\@terms);
+	my $iter = $meta_pkg->search(\@terms, {fetchonly => [ 'entry_id' ]});
 	my %ids = ();
 	while (my $e = $iter->()) {
 		$ids{$e->entry_id} = 1;
 	}
 
-	push(@$terms, '-or', {
-		'id' => [ keys %ids ],
-	});
+	if (%ids) {
+		for (my $i = scalar(@$terms); $i >= 0; $i--) {
+			if ((ref $terms->[$i]) eq 'ARRAY') {
+				push(@{ $terms->[$i] }, '-or', {
+					'id' => [ keys %ids ],
+				});
+			}
+		}
+	}
 
 	return $execute->(@_);
 }
