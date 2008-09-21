@@ -32,7 +32,6 @@
 package CustomFieldsSearch::App;
 
 use strict;
-use CustomFields::Util qw( get_meta );
 
 sub init_request {
 	my ($plugin, $app) = @_;
@@ -41,42 +40,94 @@ sub init_request {
 		my $enable = $app->param('CustomFieldsSearch');
 		my @fields = $app->param('CustomFieldsSearchField');
 
-		local $SIG{__WARN__} = sub {  }; 
 		if ($enable) {
-			if (! @fields) {
-				my $cf = MT->component('CustomFields');
-				$cf->{search_hit_method} = \&MT::App::Search::_search_hit;
-				*MT::App::Search::_search_hit = sub {
-					require CustomFields::App::Search;
-					my $method_ref = CustomFields::App::Search->can(
-						'_search_hit'
-					);
-					return $method_ref->($cf, @_);
-				};
+			local $SIG{__WARN__} = sub {  }; 
+			if ($MT::VERSION < 4.2) {
+				if (! @fields) {
+					my $cf = MT->component('CustomFields');
+					$cf->{search_hit_method} = \&MT::App::Search::_search_hit;
+					*MT::App::Search::_search_hit = sub {
+						require CustomFields::App::Search;
+						my $method_ref = CustomFields::App::Search->can(
+							'_search_hit'
+						);
+						return $method_ref->($cf, @_);
+					};
+				}
+				else {
+					my $hit_method = \&MT::App::Search::_search_hit;
+					*MT::App::Search::_search_hit = sub {
+						return &_search_hit(\@fields, $hit_method, @_);
+					};
+				}
 			}
 			else {
-				my $hit_method = \&MT::App::Search::_search_hit;
-				*MT::App::Search::_search_hit = sub {
-					return &_search_hit(\@fields, $hit_method, @_);
+				my $execute = \&MT::App::Search::execute;
+				*MT::App::Search::execute = sub {
+					return &execute($execute, \@fields, @_);
 				};
 			}
 		}
 	}
 }
 
+sub execute {
+	my $execute = shift;
+	my $fields = shift;
+	my ($app, $terms, $args ) = @_;
+
+	require CustomFields::Field;
+	require CustomFields::App::CMS;
+	require MT::Entry;
+
+	my %terms = (
+		obj_type => 'entry',
+	);
+
+	if (@$fields) {
+		$terms{'tag'} = $fields;
+	}
+	my @c_fields = CustomFields::Field->load(\%terms);
+
+	my $types = CustomFields::App::CMS->load_customfield_types;
+	my @terms = ();
+	foreach my $f (@c_fields) {
+		if (! $types->{$f->type}) {
+			next;
+		}
+
+		push(@terms, {
+			$types->{$f->type}->{'column_def'} => {
+				'like' => '%' . $app->{search_string} . '%',
+			},
+		});
+	}
+
+	my $meta_pkg = MT::Entry->meta_pkg;
+	my $iter = $meta_pkg->search(\@terms);
+	my %ids = ();
+	while (my $e = $iter->()) {
+		$ids{$e->entry_id} = 1;
+	}
+
+	push(@$terms, '-or', {
+		'id' => [ keys %ids ],
+	});
+
+	return $execute->(@_);
+}
+
 sub _search_hit {
     my ($fields, $hit_method, $app, $entry) = @_;
 
-    return 1 if &{$hit_method}($app, $entry); # If query matches non-CustomFields, why waste time?
-    return 0 if $app->{searchparam}{SearchElement} ne 'entries'; # If it hasn't matched and isn't searching on entries, again why waste time?
+    return 1 if &{$hit_method}($app, $entry);
+    return 0 if $app->{searchparam}{SearchElement} ne 'entries';
 
-	my $meta = get_meta($entry);
+	my $meta = CustomFields::Util::get_meta($entry);
 
     require CustomFields::Field;
 	my $terms = {
 		obj_type => 'entry',
-		#obj_type => $obj_type,
-		#blog_id => ( $blog_id ? [ $blog_id, 0 ] : 0 ),
 		tag => $fields,
     };
 	my @fields = CustomFields::Field->load($terms);
