@@ -33,6 +33,13 @@ package CustomFieldsSearch::App;
 
 use strict;
 
+my %tag_field = qw(
+	entrytitle title
+	entrybody text
+	entrymore text_more
+	entrykeywords keywords
+);
+
 sub init_request {
 	my ($plugin, $app) = @_;
 
@@ -71,7 +78,9 @@ sub init_request {
 				}
 
 				my $query_parse = \&MT::App::Search::query_parse;
-				*MT::App::Search::query_parse = \&query_parse;
+				*MT::App::Search::query_parse = sub {
+					return &query_parse($empty_search, @_);
+				};
 
 				my $execute = \&MT::App::Search::execute;
 				*MT::App::Search::execute = sub {
@@ -96,13 +105,15 @@ sub context_script {
     my $cgipath = $ctx->_hdlr_cgi_path($args);
     my $script = $ctx->{config}->SearchScript;
 
+	my @ignores = ('limit', 'offset', 'format');
     my $q = new CGI('');
 	if ($app->isa('MT::App::Search')) {
 	    foreach my $p ($app->param) {
-			$q->param($p, $app->param($p));
+			if (! grep({ $_ eq $p } @ignores)) {
+				$q->param($p, $app->param($p));
+			}
 		}
 	}
-	$q->delete('limit', 'offset');
 
 	local $CGI::USE_PARAM_SEMICOLONS;
 	$CGI::USE_PARAM_SEMICOLONS = 0;
@@ -130,8 +141,10 @@ sub execute {
 	my $empty_search = shift;
     my ($app, $terms, $args ) = @_;
 
-	$app->{search_string} = '';
-	$app->param('search', '');
+	if ($empty_search) {
+		$app->{search_string} = '';
+		$app->param('search', '');
+	}
 
 	my ($count, $iter) = $execute->(@_);
 	if (&feelingLucky($app)) {
@@ -144,11 +157,13 @@ sub execute {
 }
 
 sub query_parse {
+	my $empty_search = shift;
     my $app = shift;
     my ( %columns ) = @_;
-
-	# CustomFields matching.
 	my $terms = [];
+	my @and_ids = ();
+
+	# CustomFields field matching.
 	my @fields = grep({ $_ } $app->param('CustomFieldsSearchField'));
 
 	my (%likes, %equals, %ins) = ();
@@ -173,14 +188,13 @@ sub query_parse {
 		@$keys = keys(%$hash);
 	}
 
-
 	my $obj_type = $app->{searchparam}{Type};
 
 	require CustomFields::Field;
 	require CustomFields::App::CMS;
 
 	my $meta_terms = [];
-	my $meta_terms_ors = [];
+	my $meta_terms_ands = [];
 	my $types = CustomFields::App::CMS->load_customfield_types;
 
 	my $field_terms = {
@@ -190,6 +204,7 @@ sub query_parse {
 	if (@fields) {
 		$field_terms->{'tag'} = [ @fields, @like_tags, @equals_tags, @in_tags ];
 	}
+
 	my @c_fields = CustomFields::Field->load($field_terms);
 
 	foreach my $f (@c_fields) {
@@ -199,22 +214,24 @@ sub query_parse {
 
 		my $tag = $f->tag;
 
-		if (grep({ $_ eq $tag } @fields)) {
-			push(@$meta_terms_ors, '-or', [
-				{
-					'type' => 'field.' . $f->basename,
-				},
-				'-and',
-				{
-					$types->{$f->type}->{'column_def'} => {
-						'like' => '%' . $app->{search_string} . '%',
+		if (! $empty_search) {
+			if (grep({ $_ eq $tag } @fields)) {
+				push(@$meta_terms, '-or', [
+					{
+						'type' => 'field.' . $f->basename,
 					},
-				},
-			]);
+					'-and',
+					{
+						$types->{$f->type}->{'column_def'} => {
+							'like' => '%' . $app->{search_string} . '%',
+						},
+					},
+				]);
+			}
 		}
 
 		if (grep({ $_ eq $tag } @like_tags)) {
-			push(@$meta_terms, '-and', [
+			push(@$meta_terms_ands, [
 				{
 					'type' => 'field.' . $f->basename,
 				},
@@ -232,7 +249,7 @@ sub query_parse {
 		) {
 			my ($tags, $hash) = @$tuple;
 			if (grep({ $_ eq $tag } @$tags)) {
-				push(@$meta_terms, '-and', [
+				push(@$meta_terms_ands, [
 					{
 						'type' => 'field.' . $f->basename,
 					},
@@ -244,54 +261,98 @@ sub query_parse {
 			}
 		}
 	}
-	shift(@$meta_terms_ors);
-	push(@$meta_terms, '-and', $meta_terms_ors);
 	shift(@$meta_terms);
 
 	my $obj_class = $app->model($obj_type);
 	my $obj_id_key = $obj_class->datasource . '_id';
 	my $meta_pkg = $obj_class->meta_pkg;
-	my $iter = $meta_pkg->search($meta_terms, {fetchonly => [ $obj_id_key ]});
-	my %ids = ();
-	while (my $e = $iter->()) {
-		$ids{$e->$obj_id_key} = 1;
+
+	if (@$meta_terms_ands) {
+		my $init = 0;
+		my @ids = ();
+		foreach my $terms (@$meta_terms_ands) {
+			my $iter = $meta_pkg->search(
+				$terms, {fetchonly => [ $obj_id_key ]}
+			);
+			my %ids = ();
+			while (my $e = $iter->()) {
+				$ids{$e->$obj_id_key} = 1;
+			}
+
+			if (! %ids) {
+				return { terms => { id => 0 } };
+			}
+
+			if (! $init) {
+				@ids = keys(%ids);
+			}
+			else {
+				@ids = grep(
+					{ my $i = $_; grep({ $i == $_ } @ids) }
+					keys(%ids)
+				);
+			}
+			$init = 1;
+		}
+
+		if ($empty_search || @$meta_terms) {
+			push(@$meta_terms,
+				(@$meta_terms ? '-and' : ()),
+				{ $obj_id_key => \@ids }
+			);
+		}
+		@and_ids = @ids;
 	}
 
-	if (%ids) {
-		push(@$terms, (scalar(@$terms) ? '-or' : ()), {
-			'id' => [ keys %ids ],
-		});
+	if ($empty_search || @$meta_terms) {
+		my $iter = $meta_pkg->search(
+			$meta_terms, {fetchonly => [ $obj_id_key ]}
+		);
+		my %ids = ();
+		while (my $e = $iter->()) {
+			$ids{$e->$obj_id_key} = 1;
+		}
+
+		if (%ids) {
+			push(@$terms, (scalar(@$terms) ? '-or' : ()),
+				{ 'id' => [ keys %ids ] }
+			);
+		}
 	}
 
-	if (@$terms) {
-		# match for customfields.
-		return { terms => $terms };
-	}
-
-	# not match for customfields.
-
-	# Entry's column setting.
-	my $args = {};
+	# Default field matching.
 
 	my @ignores = $app->param('CustomFieldsSearchIgnore');
-	foreach my $i (@ignores) {
-		if (! grep({ $_ eq $i } @fields)) {
-			delete $columns{$i};
+	foreach my $tag (keys(%tag_field)) {
+		if (
+			(grep({ lc($_) eq $tag } @ignores))
+			&& (! grep({ lc($_) eq $tag } @fields))
+		) {
+			delete $columns{$tag_field{$tag}};
 		}
 	}
 
 	my @column_names = keys %columns;
 
-	if (@column_names) {
-		$args = {
-			'freetext' => {
-				columns       => \@column_names,
-				search_string => $app->{search_string}
-			}
-		};
+	if (! $empty_search && @column_names) {
+		my $tmp = [];
+		foreach my $c (@column_names) {
+			push(@$tmp, '-or', { $c => {
+				'like' => '%' . $app->{search_string} . '%',
+			}});
+		}
+		shift(@$tmp);
+
+		push(@$terms, (scalar(@$terms) ? '-or' : ()),
+			[
+				{ 'id' => \@and_ids },
+				'-and',
+				$tmp
+			]
+		);
 	}
 
-	{ args => $args };
+	{ terms => (@$terms ? $terms : undef), args => {} };
 }
 
 sub _search_hit {
@@ -300,12 +361,13 @@ sub _search_hit {
 	my @ignores = $app->param('CustomFieldsSearchIgnore');
 	if (@ignores) {
 		my $str = '';
-		foreach my $key ('title', 'text', 'text_more', 'excerpt') {
+		foreach my $tag (keys(%tag_field)) {
 			if (
-				(! grep({ $_ eq $key } @ignores))
-				|| (grep({ $_ eq $key } @$fields))
+				(! grep({ lc($_) eq $tag } @ignores))
+				|| (grep({ lc($_) eq $tag } @$fields))
 			) {
-				$str .= $entry->$key;
+				my $field = $tag_field{$tag};
+				$str .= $entry->$field;
 			}
 		}
 

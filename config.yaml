@@ -3,7 +3,7 @@ name: CustomFieldsSearch
 version: 0.1.0
 
 #about this plugin
-description: <__trans phrase="A plugin enable to search by CustromFields data">
+description: <__trans phrase="A plugin enable to search by CustromFields data.">
 author_name: <__trans phrase="toi-planning">
 author_link: http://tec.toi-planning.net/
 plugin_link: http://tec.toi-planning.net/mt/customfieldssearch/
