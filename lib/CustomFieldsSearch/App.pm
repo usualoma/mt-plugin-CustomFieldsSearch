@@ -42,7 +42,9 @@ sub init_request {
 		if ($enable) {
 			local $SIG{__WARN__} = sub {  }; 
 			if ($MT::VERSION < 4.2) {
-				my @fields = $app->param('CustomFieldsSearchField');
+				my @fields = grep(
+					{ $_ } $app->param('CustomFieldsSearchField')
+				);
 				if (! @fields) {
 					my $cf = MT->component('CustomFields');
 					$cf->{search_hit_method} = \&MT::App::Search::_search_hit;
@@ -62,10 +64,82 @@ sub init_request {
 				}
 			}
 			else {
+				my $empty_search = 0;
+				if (! $app->param('searchTerms') && ! $app->param('search')) {
+					$empty_search = 1;
+					$app->param('search', 'CustomFieldsSearch');
+				}
+
 				my $query_parse = \&MT::App::Search::query_parse;
 				*MT::App::Search::query_parse = \&query_parse;
+
+				my $execute = \&MT::App::Search::execute;
+				*MT::App::Search::execute = sub {
+					return &execute($execute, $empty_search, @_);
+				};
+
+				require MT::Template::Context::Search;
+				my $context_script = \&MT::Template::Context::Search::context_script;
+				*MT::Template::Context::Search::context_script = \&context_script;
+
 			}
 		}
+	}
+}
+
+sub context_script {
+	my ( $ctx, $args, $cond ) = @_;
+
+	require MT;
+	my $app = MT->instance;
+
+    my $cgipath = $ctx->_hdlr_cgi_path($args);
+    my $script = $ctx->{config}->SearchScript;
+
+    my $q = new CGI('');
+	if ($app->isa('MT::App::Search')) {
+	    foreach my $p ($app->param) {
+			$q->param($p, $app->param($p));
+		}
+	}
+	$q->delete('limit', 'offset');
+
+	local $CGI::USE_PARAM_SEMICOLONS;
+	$CGI::USE_PARAM_SEMICOLONS = 0;
+	$cgipath . $script . '?' . $q->query_string;
+}
+
+sub feelingLucky {
+	my ($app) = @_;
+	$app->param('CustomFieldsSearchLucky') || 0;
+}
+
+sub found {
+	my ($app, $entry) = @_;
+	if (&feelingLucky($app)) {
+		my $at = $app->param('CustomFieldsSearchLuckyArchiveType') || '';
+		my $url = $entry->permalink($at);
+		$app->redirect($url);
+		return 0;
+	}
+	return 1;
+}
+
+sub execute {
+	my $execute = shift;
+	my $empty_search = shift;
+    my ($app, $terms, $args ) = @_;
+
+	$app->{search_string} = '';
+	$app->param('search', '');
+
+	my ($count, $iter) = $execute->(@_);
+	if (&feelingLucky($app)) {
+		my $entry = $iter->();
+		&found($app, $entry);
+	}
+	else {
+		($count, $iter);
 	}
 }
 
@@ -75,40 +149,104 @@ sub query_parse {
 
 	# CustomFields matching.
 	my $terms = [];
-	my @fields = $app->param('CustomFieldsSearchField');
+	my @fields = grep({ $_ } $app->param('CustomFieldsSearchField'));
+
+	my (%likes, %equals, %ins) = ();
+	my (@like_tags, @equals_tags, @in_tags) = ();
+	foreach my $tuple (
+		['Like', \%likes, \@like_tags, 0],
+		['Equals', \%equals, \@equals_tags, 0],
+		['In', \%ins, \@in_tags, 1]
+	) {
+		my ($key, $hash, $keys, $is_array) = @$tuple;
+		map({
+			if ($_ =~ m/^(\w+):(.*)/) {
+				if ($is_array) {
+					$hash->{$1} ||= [];
+					push(@{ $hash->{$1} }, $2);
+				}
+				else {
+					$hash->{$1} = $2;
+				}
+			}
+		} $app->param('CustomFieldsSearchField' . $key));
+		@$keys = keys(%$hash);
+	}
+
+
 	my $obj_type = $app->{searchparam}{Type};
 
 	require CustomFields::Field;
 	require CustomFields::App::CMS;
+
+	my $meta_terms = [];
+	my $meta_terms_ors = [];
+	my $types = CustomFields::App::CMS->load_customfield_types;
 
 	my $field_terms = {
 		obj_type => $obj_type,
 	};
 
 	if (@fields) {
-		$field_terms->{'tag'} = \@fields;
+		$field_terms->{'tag'} = [ @fields, @like_tags, @equals_tags, @in_tags ];
 	}
 	my @c_fields = CustomFields::Field->load($field_terms);
 
-	my $types = CustomFields::App::CMS->load_customfield_types;
-	my $meta_terms = [];
 	foreach my $f (@c_fields) {
 		if (! $types->{$f->type}) {
 			next;
 		}
 
-		push(@$meta_terms, (scalar(@$meta_terms) ? '-or' : ()), [
-			{
-				'type' => 'field.' . $f->basename,
-			},
-			'-and',
-			{
-				$types->{$f->type}->{'column_def'} => {
-					'like' => '%' . $app->{search_string} . '%',
+		my $tag = $f->tag;
+
+		if (grep({ $_ eq $tag } @fields)) {
+			push(@$meta_terms_ors, '-or', [
+				{
+					'type' => 'field.' . $f->basename,
 				},
-			},
-		]);
+				'-and',
+				{
+					$types->{$f->type}->{'column_def'} => {
+						'like' => '%' . $app->{search_string} . '%',
+					},
+				},
+			]);
+		}
+
+		if (grep({ $_ eq $tag } @like_tags)) {
+			push(@$meta_terms, '-and', [
+				{
+					'type' => 'field.' . $f->basename,
+				},
+				'-and',
+				{
+					$types->{$f->type}->{'column_def'} => {
+						'like' => '%' . $likes{$tag} . '%',
+					},
+				},
+			]);
+		}
+
+		foreach my $tuple (
+			[\@equals_tags, \%equals], [\@in_tags, \%ins]
+		) {
+			my ($tags, $hash) = @$tuple;
+			if (grep({ $_ eq $tag } @$tags)) {
+				push(@$meta_terms, '-and', [
+					{
+						'type' => 'field.' . $f->basename,
+					},
+					'-and',
+					{
+						$types->{$f->type}->{'column_def'} => $hash->{$tag},
+					},
+				]);
+			}
+		}
 	}
+	shift(@$meta_terms_ors);
+	push(@$meta_terms, '-and', $meta_terms_ors);
+	shift(@$meta_terms);
 
 	my $obj_class = $app->model($obj_type);
 	my $obj_id_key = $obj_class->datasource . '_id';
@@ -137,7 +275,9 @@ sub query_parse {
 
 	my @ignores = $app->param('CustomFieldsSearchIgnore');
 	foreach my $i (@ignores) {
-		delete $columns{$i};
+		if (! grep({ $_ eq $i } @fields)) {
+			delete $columns{$i};
+		}
 	}
 
 	my @column_names = keys %columns;
@@ -157,8 +297,24 @@ sub query_parse {
 sub _search_hit {
     my ($fields, $hit_method, $app, $entry) = @_;
 
-    return 1 if &{$hit_method}($app, $entry);
-    return 0 if $app->{searchparam}{SearchElement} ne 'entries';
+	my @ignores = $app->param('CustomFieldsSearchIgnore');
+	if (@ignores) {
+		my $str = '';
+		foreach my $key ('title', 'text', 'text_more', 'excerpt') {
+			if (
+				(! grep({ $_ eq $key } @ignores))
+				|| (grep({ $_ eq $key } @$fields))
+			) {
+				$str .= $entry->$key;
+			}
+		}
+
+    	return 1 if $app->is_a_match($str);
+	}
+	else {
+		return 1 if &{$hit_method}($app, $entry);
+		return 0 if $app->{searchparam}{SearchElement} ne 'entries';
+	}
 
 	my $meta = CustomFields::Util::get_meta($entry);
 
