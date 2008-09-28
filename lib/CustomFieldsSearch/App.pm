@@ -147,7 +147,7 @@ sub execute {
 	}
 
 	my ($count, $iter) = $execute->(@_);
-	if (&feelingLucky($app)) {
+	if ($count && &feelingLucky($app)) {
 		my $entry = $iter->();
 		&found($app, $entry);
 	}
@@ -363,7 +363,7 @@ sub query_parse {
 		push(@$terms, (scalar(@$terms) ? '-or' : ()),
 			[
 				{
-					'id' => \@and_ids,
+					(@and_ids ? ('id' => \@and_ids) : ()),
 					'class' => \@class_types,
 					'blog_id' => $blog_ids,
 				},
