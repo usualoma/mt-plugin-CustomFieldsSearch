@@ -105,7 +105,7 @@ sub context_script {
     my $cgipath = $ctx->_hdlr_cgi_path($args);
     my $script = $ctx->{config}->SearchScript;
 
-	my @ignores = ('limit', 'offset', 'format');
+	my @ignores = ('startIndex', 'limit', 'offset', 'format');
     my $q = new CGI('');
 	if ($app->isa('MT::App::Search')) {
 	    foreach my $p ($app->param) {
@@ -162,6 +162,13 @@ sub query_parse {
     my ( %columns ) = @_;
 	my $terms = [];
 	my @and_ids = ();
+	my $blog_ids = [ keys %{ $app->{searchparam}{IncludeBlogs} } ];
+	my $plugin = $app->component('CustomFieldsSearch');
+
+	my @class_types = $app->param('CustomFieldsSearchClassType');
+	if (! @class_types) {
+		@class_types = ('entry', 'page');
+	}
 
 	# CustomFields field matching.
 	my @fields = grep({ $_ } $app->param('CustomFieldsSearchField'));
@@ -199,10 +206,13 @@ sub query_parse {
 
 	my $field_terms = {
 		obj_type => $obj_type,
+		blog_id => $blog_ids,
 	};
 
-	if (@fields) {
-		$field_terms->{'tag'} = [ @fields, @like_tags, @equals_tags, @in_tags ];
+	$field_terms->{'tag'} = [ @fields, @like_tags, @equals_tags, @in_tags ];
+	$plugin->{target_tags} = [ @{ $field_terms->{'tag'} } ];
+	if (! @{ $field_terms->{'tag'} }) {
+		delete($field_terms->{'tag'});
 	}
 
 	my @c_fields = CustomFields::Field->load($field_terms);
@@ -315,7 +325,11 @@ sub query_parse {
 
 		if (%ids) {
 			push(@$terms, (scalar(@$terms) ? '-or' : ()),
-				{ 'id' => [ keys %ids ] }
+				{
+					'id' => [ keys %ids ],
+					'class' => \@class_types,
+					'blog_id' => $blog_ids,
+				}
 			);
 		}
 	}
@@ -329,6 +343,9 @@ sub query_parse {
 			&& (! grep({ lc($_) eq $tag } @fields))
 		) {
 			delete $columns{$tag_field{$tag}};
+		}
+		else {
+			push(@{ $plugin->{target_tags} }, $tag);
 		}
 	}
 
@@ -345,14 +362,25 @@ sub query_parse {
 
 		push(@$terms, (scalar(@$terms) ? '-or' : ()),
 			[
-				{ 'id' => \@and_ids },
+				{
+					'id' => \@and_ids,
+					'class' => \@class_types,
+					'blog_id' => $blog_ids,
+				},
 				'-and',
 				$tmp
 			]
 		);
 	}
 
-	{ terms => (@$terms ? $terms : undef), args => {} };
+	if (! @$terms) {
+		$terms = [{
+			'class' => \@class_types,
+			'blog_id' => $blog_ids,
+		}];
+	}
+
+	{ terms => $terms, args => {} };
 }
 
 sub _search_hit {

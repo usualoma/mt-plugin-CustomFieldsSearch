@@ -14,3 +14,9 @@ l10n_class: CustomFieldsSearch::L10N
 
 # hook
 init_request: CustomFieldsSearch::App::init_request
+
+#tag
+tags:
+    help_url: http://tec.toi-planning.net/mt/customfieldssearch/tags#%t
+    block:
+        IfCustomFieldsSearchField?: CustomFieldsSearch::Template::ContextHandlers::_hdlr_if_field
