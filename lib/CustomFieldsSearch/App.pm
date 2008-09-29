@@ -305,6 +305,10 @@ sub query_parse {
 			$init = 1;
 		}
 
+		if (! @ids) {
+			return { terms => { id => 0 } };
+		}
+
 		if ($empty_search || @$meta_terms) {
 			push(@$meta_terms,
 				(@$meta_terms ? '-and' : ()),
