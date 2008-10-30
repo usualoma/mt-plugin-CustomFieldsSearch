@@ -206,7 +206,7 @@ sub query_parse {
 
 	my $field_terms = {
 		obj_type => $obj_type,
-		blog_id => $blog_ids,
+		blog_id => [@$blog_ids, 0],
 	};
 
 	$field_terms->{'tag'} = [ @fields, @like_tags, @equals_tags, @in_tags ];
