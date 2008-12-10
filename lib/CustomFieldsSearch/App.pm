@@ -202,7 +202,7 @@ sub query_parse {
 
 	my $meta_terms = [];
 	my $meta_terms_ands = [];
-	my $types = CustomFields::App::CMS->load_customfield_types;
+	my $types = $app->registry('customfield_types');
 
 	my $field_terms = {
 		obj_type => $obj_type,
