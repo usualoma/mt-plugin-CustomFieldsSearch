@@ -1,6 +1,6 @@
 #plugin name
 name: CustomFieldsSearch
-version: 0.1.4.1
+version: 0.1.5
 
 #about this plugin
 description: <__trans phrase="A plugin enable to search by CustromFields data.">
