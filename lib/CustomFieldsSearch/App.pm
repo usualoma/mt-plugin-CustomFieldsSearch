@@ -185,7 +185,7 @@ sub query_parse {
 			if ($_ =~ m/^(\w+):(.*)/) {
 				if ($is_array) {
 					$hash->{$1} ||= [];
-					push(@{ $hash->{$1} }, $2);
+					push(@{ $hash->{$1} }, split(',', $2));
 				}
 				else {
 					$hash->{$1} = $2;
