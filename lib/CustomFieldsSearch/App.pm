@@ -195,9 +195,9 @@ sub query_parse {
 		@$keys = keys(%$hash);
 	}
 
-	my %ops = ();
-	my %op_tags = ();
-	foreach ($app->param('CustomFieldsSearchFieldOp')) {
+	my %ranges = ();
+	my %range_tags = ();
+	foreach ($app->param('CustomFieldsSearchFieldRange')) {
 		if ($_ =~ m/^(\w+):(.*)/) {
 			my $tag = $1;
 			foreach (split(',', $2)) {
@@ -205,15 +205,15 @@ sub query_parse {
 					my ($op, $value) = ($1, $2);
 					# "=>" is replaced to ">=" and "=<" is replaced to "<="
 					$op =~ s/=(<|>)/$1=/;
-					$ops{$op} ||= {};
-					$ops{$op}{$tag} ||= [];
-					push(@{ $ops{$op}{$tag} }, $value);
+					$ranges{$op} ||= {};
+					$ranges{$op}{$tag} ||= [];
+					push(@{ $ranges{$op}{$tag} }, $value);
 				}
 			}
 		}
 	}
-	while (my($k, $h) = each(%ops)) {
-		$op_tags{$k} = [ keys(%$h) ];
+	while (my($k, $h) = each(%ranges)) {
+		$range_tags{$k} = [ keys(%$h) ];
 	}
 
 	my $obj_type = $app->{searchparam}{Type};
@@ -231,7 +231,7 @@ sub query_parse {
 	};
 
 	$field_terms->{'tag'} = [
-		@fields, @like_tags, @equals_tags, @in_tags, map(@$_, values(%op_tags))
+		@fields, @like_tags, @equals_tags, @in_tags, map(@$_, values(%range_tags))
 	];
 	$plugin->{target_tags} = [ @{ $field_terms->{'tag'} } ];
 	if (! @{ $field_terms->{'tag'} }) {
@@ -301,9 +301,9 @@ sub query_parse {
 			['>=', 'range_incl', 0],
 		) {
 			my ($op, $type, $index) = @$tuple;
-			my $tags = $op_tags{$op};
+			my $tags = $range_tags{$op};
 			if (grep({ $_ eq $tag } @$tags)) {
-				foreach my $v (@{ $ops{$op}{$tag} }) {
+				foreach my $v (@{ $ranges{$op}{$tag} }) {
 					my @range = (undef, undef);
 					$range[$index] = $v;
 					push(@$meta_terms_ands, {
