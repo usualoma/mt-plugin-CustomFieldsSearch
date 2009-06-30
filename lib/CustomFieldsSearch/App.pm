@@ -195,6 +195,27 @@ sub query_parse {
 		@$keys = keys(%$hash);
 	}
 
+	my %ops = ();
+	my %op_tags = ();
+	foreach ($app->param('CustomFieldsSearchFieldOp')) {
+		if ($_ =~ m/^(\w+):(.*)/) {
+			my $tag = $1;
+			foreach (split(',', $2)) {
+				if (m/([<>=]*)(\d+)/) {
+					my ($op, $value) = ($1, $2);
+					# "=>" is replaced to ">=" and "=<" is replaced to "<="
+					$op =~ s/=(<|>)/$1=/;
+					$ops{$op} ||= {};
+					$ops{$op}{$tag} ||= [];
+					push(@{ $ops{$op}{$tag} }, $value);
+				}
+			}
+		}
+	}
+	while (my($k, $h) = each(%ops)) {
+		$op_tags{$k} = [ keys(%$h) ];
+	}
+
 	my $obj_type = $app->{searchparam}{Type};
 
 	require CustomFields::Field;
@@ -209,7 +230,9 @@ sub query_parse {
 		blog_id => [@$blog_ids, 0],
 	};
 
-	$field_terms->{'tag'} = [ @fields, @like_tags, @equals_tags, @in_tags ];
+	$field_terms->{'tag'} = [
+		@fields, @like_tags, @equals_tags, @in_tags, map(@$_, values(%op_tags))
+	];
 	$plugin->{target_tags} = [ @{ $field_terms->{'tag'} } ];
 	if (! @{ $field_terms->{'tag'} }) {
 		delete($field_terms->{'tag'});
@@ -270,6 +293,38 @@ sub query_parse {
 				]);
 			}
 		}
+
+		foreach my $tuple (
+			['<', 'range', 1],
+			['<=', 'range_incl', 1],
+			['>', 'range', 0],
+			['>=', 'range_incl', 0],
+		) {
+			my ($op, $type, $index) = @$tuple;
+			my $tags = $op_tags{$op};
+			if (grep({ $_ eq $tag } @$tags)) {
+				foreach my $v (@{ $ops{$op}{$tag} }) {
+					my @range = (undef, undef);
+					$range[$index] = $v;
+					push(@$meta_terms_ands, {
+						'terms' => [
+							{
+								'type' => 'field.' . $f->basename,
+							},
+							'-and',
+							{
+								$types->{$f->type}->{'column_def'} => \@range
+							},
+						],
+						'args' => {
+							$type => {
+								$types->{$f->type}->{'column_def'} => 1,
+							},
+						},
+					});
+				}
+			}
+		}
 	}
 	shift(@$meta_terms);
 
@@ -281,8 +336,14 @@ sub query_parse {
 		my $init = 0;
 		my @ids = ();
 		foreach my $terms (@$meta_terms_ands) {
+			my $args = {fetchonly => [ $obj_id_key ]};
+			if (ref($terms) eq 'HASH' && $terms->{'terms'}) {
+				$args = {%$args, %{ $terms->{'args'} }} if $terms->{'args'};
+				$terms = $terms->{'terms'};
+			}
+
 			my $iter = $meta_pkg->search(
-				$terms, {fetchonly => [ $obj_id_key ]}
+				$terms, $args
 			);
 			my %ids = ();
 			while (my $e = $iter->()) {
