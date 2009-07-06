@@ -75,6 +75,13 @@ sub init_request {
 				if (! $app->param('searchTerms') && ! $app->param('search')) {
 					$empty_search = 1;
 					$app->param('search', 'CustomFieldsSearch');
+
+					MT::Template::Context->add_conditional_tag(
+						'NoSearchResults' => sub {
+							my($ctx, $args, $cond) = @_;
+							$ctx->stash('count') ? 0 : 1;
+						}
+					);
 				}
 
 				my $query_parse = \&MT::App::Search::query_parse;
