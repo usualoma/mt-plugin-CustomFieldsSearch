@@ -112,7 +112,7 @@ sub context_script {
     my $cgipath = $ctx->_hdlr_cgi_path($args);
     my $script = $ctx->{config}->SearchScript;
 
-	my @ignores = ('startIndex', 'limit', 'offset', 'format');
+	my @ignores = ('startIndex', 'limit', 'offset', 'format', 'page');
     my $q = new CGI('');
 	if ($app->isa('MT::App::Search')) {
 	    foreach my $p ($app->param) {
