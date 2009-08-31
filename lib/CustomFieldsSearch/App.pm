@@ -163,6 +163,19 @@ sub execute {
 	}
 }
 
+sub field_params {
+	my $app = shift;
+	my %params = ();
+	my $orig = $app->param->Vars;
+
+	foreach my $k (keys(%$orig)) {
+		$k =~ m/([^:]*)/;
+		push(@{ $params{$1} ||= [] }, split("\0", $orig->{$k}));
+	}
+
+	\%params;
+}
+
 sub query_parse {
 	my $empty_search = shift;
     my $app = shift;
@@ -177,17 +190,7 @@ sub query_parse {
 		@class_types = ('entry', 'page');
 	}
 
-	my $vars = $app->param->Vars;
-	my $get_params = sub {
-		my $key = shift;
-		my @list = ();
-		foreach my $k (keys(%$vars)) {
-			if ($k =~ m/$key(:.*)?/) {
-				push(@list, split("\0", $vars->{$k}));
-			}
-		}
-		@list;
-	};
+	my $field_params = field_params($app);
 
 	# CustomFields field matching.
 	my @fields = grep({ $_ } $app->param('CustomFieldsSearchField'));
@@ -210,13 +213,13 @@ sub query_parse {
 					$hash->{$1} = $2;
 				}
 			}
-		} $get_params->('CustomFieldsSearchField' . $key));
+		} @{ $field_params->{'CustomFieldsSearchField' . $key} });
 		@$keys = keys(%$hash);
 	}
 
 	my %ranges = ();
 	my %range_tags = ();
-	foreach ($get_params->('CustomFieldsSearchFieldRange')) {
+	foreach (@{ $field_params->{'CustomFieldsSearchFieldRange'} }) {
 		if ($_ =~ m/^(\w+):(.*)/) {
 			my $tag = $1;
 			foreach (split(',', $2)) {
