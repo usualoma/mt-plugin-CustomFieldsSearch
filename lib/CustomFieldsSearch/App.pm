@@ -461,10 +461,22 @@ sub query_parse {
 	}
 
 	if (! @$terms) {
-		$terms = [{
-			'class' => \@class_types,
-			'blog_id' => $blog_ids,
-		}];
+		if (! $app->param('PreventEmptySearch')) {
+			$terms = [{
+				'class' => \@class_types,
+				'blog_id' => $blog_ids,
+			}];
+		}
+		else {
+			$terms = [{
+				'class' => \@class_types,
+				'blog_id' => 0,
+			}];
+		}
+		$app->{custom_fields_no_search} = 1;
+	}
+	else {
+		$app->{custom_fields_no_search} = 0;
 	}
 
 	{ terms => $terms, args => {} };

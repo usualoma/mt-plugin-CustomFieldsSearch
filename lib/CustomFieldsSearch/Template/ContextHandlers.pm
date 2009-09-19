@@ -48,4 +48,12 @@ sub _hdlr_if_field {
     grep({ lc($_) eq lc($tag) } @{ $plugin->{target_tags} });
 }
 
+sub _hdlr_no_search {
+    my($ctx, $args, $cond) = @_;
+
+	require MT;
+	my $app = MT->instance;
+	return $app->{custom_fields_no_search};
+}
+
 1;

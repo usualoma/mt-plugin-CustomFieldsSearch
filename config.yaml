@@ -20,3 +20,4 @@ tags:
     help_url: http://tec.toi-planning.net/mt/customfieldssearch/tags#%t
     block:
         IfCustomFieldsSearchField?: CustomFieldsSearch::Template::ContextHandlers::_hdlr_if_field
+        CustomFieldsNoSearch?: CustomFieldsSearch::Template::ContextHandlers::_hdlr_no_search
