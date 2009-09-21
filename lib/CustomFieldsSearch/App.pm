@@ -109,7 +109,7 @@ sub context_script {
 	require MT;
 	my $app = MT->instance;
 
-	my $cgipath = $ctx->_hdlr_cgi_path($args);
+	my $cgipath = ($ctx->handler_for('CGIPath'))[0]->($ctx, $args);
 	my $script = $ctx->{config}->SearchScript;
 
 	my @ignores = ('startIndex', 'limit', 'offset', 'format', 'page');
@@ -182,7 +182,13 @@ sub query_parse {
 	my ( %columns ) = @_;
 	my $terms = [];
 	my @and_ids = ();
-	my $blog_ids = [ keys %{ $app->{searchparam}{IncludeBlogs} } ];
+	my $blog_ids = undef;
+	if (ref $app->{searchparam}{IncludeBlogs} eq 'HASH') {
+		$blog_ids = [ keys %{ $app->{searchparam}{IncludeBlogs} } ];
+	}
+	else {
+		$blog_ids = $app->{searchparam}{IncludeBlogs};
+	}
 	my $plugin = $app->component('CustomFieldsSearch');
 
 	my @class_types = $app->param('CustomFieldsSearchClassType');
