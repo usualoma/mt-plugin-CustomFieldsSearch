@@ -109,13 +109,13 @@ sub context_script {
 	require MT;
 	my $app = MT->instance;
 
-    my $cgipath = $ctx->_hdlr_cgi_path($args);
-    my $script = $ctx->{config}->SearchScript;
+	my $cgipath = $ctx->_hdlr_cgi_path($args);
+	my $script = $ctx->{config}->SearchScript;
 
 	my @ignores = ('startIndex', 'limit', 'offset', 'format', 'page');
-    my $q = new CGI('');
+	my $q = new CGI('');
 	if ($app->isa('MT::App::Search')) {
-	    foreach my $p ($app->param) {
+		foreach my $p ($app->param) {
 			if (! grep({ $_ eq $p } @ignores)) {
 				$q->param($p, $app->param($p));
 			}
@@ -146,7 +146,7 @@ sub found {
 sub execute {
 	my $execute = shift;
 	my $empty_search = shift;
-    my ($app, $terms, $args ) = @_;
+	my ($app, $terms, $args ) = @_;
 
 	if ($empty_search) {
 		$app->{search_string} = '';
@@ -178,8 +178,8 @@ sub field_params {
 
 sub query_parse {
 	my $empty_search = shift;
-    my $app = shift;
-    my ( %columns ) = @_;
+	my $app = shift;
+	my ( %columns ) = @_;
 	my $terms = [];
 	my @and_ids = ();
 	my $blog_ids = [ keys %{ $app->{searchparam}{IncludeBlogs} } ];
@@ -483,7 +483,7 @@ sub query_parse {
 }
 
 sub _search_hit {
-    my ($fields, $hit_method, $app, $entry) = @_;
+	my ($fields, $hit_method, $app, $entry) = @_;
 
 	my @ignores = $app->param('CustomFieldsSearchIgnore');
 	if (@ignores) {
@@ -498,7 +498,7 @@ sub _search_hit {
 			}
 		}
 
-    	return 1 if $app->is_a_match($str);
+		return 1 if $app->is_a_match($str);
 	}
 	else {
 		return 1 if &{$hit_method}($app, $entry);
@@ -507,18 +507,18 @@ sub _search_hit {
 
 	my $meta = CustomFields::Util::get_meta($entry);
 
-    require CustomFields::Field;
+	require CustomFields::Field;
 	my $terms = {
 		obj_type => 'entry',
 		tag => $fields,
-    };
+	};
 	my @fields = CustomFields::Field->load($terms);
 
-    my @text_elements = map({
+	my @text_elements = map({
 		$meta->{$_->basename};
 	} @fields);
 
-    return 1 if $app->is_a_match(join("\n", map $_ || '', @text_elements));
+	return 1 if $app->is_a_match(join("\n", map $_ || '', @text_elements));
 }
 
 1;

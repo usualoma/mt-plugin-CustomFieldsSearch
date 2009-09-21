@@ -34,18 +34,18 @@ package CustomFieldsSearch::Template::ContextHandlers;
 use strict;
 
 sub _hdlr_if_field {
-    my($ctx, $args, $cond) = @_;
+	my($ctx, $args, $cond) = @_;
 
 	require MT;
 	my $app = MT->instance;
-    my $plugin = $app->component('CustomFieldsSearch');
+	my $plugin = $app->component('CustomFieldsSearch');
 
 	if (! $plugin->{target_tags} || (ref $plugin->{target_tags} ne 'ARRAY')) {
 		return 1;
 	}
 
 	my $tag = $args->{'tag'} || '';
-    grep({ lc($_) eq lc($tag) } @{ $plugin->{target_tags} });
+	grep({ lc($_) eq lc($tag) } @{ $plugin->{target_tags} });
 }
 
 sub _hdlr_no_search {
