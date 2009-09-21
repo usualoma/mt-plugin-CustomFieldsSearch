@@ -49,7 +49,7 @@ sub _hdlr_if_field {
 }
 
 sub _hdlr_no_search {
-    my($ctx, $args, $cond) = @_;
+	my($ctx, $args, $cond) = @_;
 
 	require MT;
 	my $app = MT->instance;
