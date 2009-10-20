@@ -153,6 +153,16 @@ sub execute {
 		$app->param('search', '');
 	}
 
+	if (
+		$app->param('CustomFieldsSearchSort')
+		&& ! (
+			$app->param('SearchSortBy') || $app->param('SearchResultDisplay')
+		)
+		&& $args->{'join'}
+	) {
+		delete($args->{'sort'});
+	}
+
 	my ($count, $iter) = $execute->(@_);
 	if ($count && &feelingLucky($app)) {
 		my $entry = $iter->();
@@ -181,6 +191,7 @@ sub query_parse {
 	my $app = shift;
 	my ( %columns ) = @_;
 	my $terms = [];
+	my $args = {};
 	my @and_ids = ();
 	my $blog_ids = undef;
 	if (ref $app->{searchparam}{IncludeBlogs} eq 'HASH') {
@@ -485,7 +496,50 @@ sub query_parse {
 		$app->{custom_fields_no_search} = 0;
 	}
 
-	{ terms => $terms, args => {} };
+	if (my $sorts = $app->param('CustomFieldsSearchSort')) {
+		$sorts =~ s/^\s*|\s*$//;
+		my @params = ();
+		foreach my $sort (split(/\s*,\s*/, $sorts)) {
+			my @param = split(/\s+/, $sort);
+			if (
+				(scalar(@param) == 1)
+				|| (($param[1] ne 'descend') && ($param[1] ne 'DESC'))
+			) {
+				$param[1] = 'ascend';
+			}
+			else {
+				$param[1] = 'descend';
+			}
+			push(@params, \@param);
+		}
+
+		my $field_terms = {
+			obj_type => $obj_type,
+			blog_id => [@$blog_ids, 0],
+			tag => [ map($_->[0], @params) ],
+		};
+		my @fields = CustomFields::Field->load($field_terms);
+
+		my @joins = ();
+		foreach my $param (@params) {
+			my ($f) = grep($_->tag eq $param->[0], @fields);
+			if ($f) {
+				push(@joins, [ $meta_pkg, 'entry_id',
+					{
+						'type' => 'field.' . $f->basename,
+					},
+					{
+						'sort' => $types->{$f->type}->{'column_def'},
+						'direction' => $param->[1],
+					}
+				]);
+			}
+		}
+
+		$args->{'join'} = shift(@joins) if @joins;
+	}
+
+	{ terms => $terms, args => $args };
 }
 
 sub _search_hit {
