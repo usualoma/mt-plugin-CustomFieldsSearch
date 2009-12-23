@@ -221,13 +221,24 @@ sub query_parse {
 	) {
 		my ($key, $hash, $keys, $is_array) = @$tuple;
 		map({
+			my ($k, $v);
+
 			if ($_ =~ m/^(\w+):(.*)/) {
+				$k = $1;
+				$v = $2;
+			}
+			elsif ($field_params->{$_}) {
+				$k = $_;
+				$v = join(',', @{ $field_params->{$_} }) || undef;
+			}
+
+			if ($k && defined($v)) {
 				if ($is_array) {
-					$hash->{$1} ||= [];
-					push(@{ $hash->{$1} }, split(',', $2));
+					$hash->{$k} ||= [];
+					push(@{ $hash->{$k} }, split(',', $v));
 				}
 				else {
-					$hash->{$1} = $2;
+					$hash->{$k} = $v;
 				}
 			}
 		} @{ $field_params->{'CustomFieldsSearchField' . $key} });
