@@ -281,7 +281,7 @@ sub query_parse {
 	require CustomFields::App::CMS;
 
 	my $meta_terms = [];
-	my $meta_terms_ands = [];
+	my $meta_terms_ands = {};
 	my $types = $app->registry('customfield_types');
 
 	my $field_terms = {
@@ -323,7 +323,7 @@ sub query_parse {
 		}
 
 		if (grep({ $_ eq $tag } @like_tags)) {
-			push(@$meta_terms_ands, [
+			$meta_terms_ands->{"CustomFieldsSearchFieldLike:$tag"} = [
 				{
 					'type' => 'field.' . $f->basename,
 				},
@@ -333,15 +333,15 @@ sub query_parse {
 						'like' => '%' . $likes{$tag} . '%',
 					},
 				},
-			]);
+			];
 		}
 
 		foreach my $tuple (
-			[\@equals_tags, \%equals], [\@in_tags, \%ins]
+			[\@equals_tags, \%equals, 'Equals'], [\@in_tags, \%ins, 'In']
 		) {
-			my ($tags, $hash) = @$tuple;
+			my ($tags, $hash, $key) = @$tuple;
 			if (grep({ $_ eq $tag } @$tags)) {
-				push(@$meta_terms_ands, [
+				$meta_terms_ands->{"CustomFieldsSearchField$key:$tag"} = [
 					{
 						'type' => 'field.' . $f->basename,
 					},
@@ -349,7 +349,7 @@ sub query_parse {
 					{
 						$types->{$f->type}->{'column_def'} => $hash->{$tag},
 					},
-				]);
+				];
 			}
 		}
 
@@ -365,7 +365,7 @@ sub query_parse {
 				foreach my $v (@{ $ranges{$op}{$tag} }) {
 					my @range = (undef, undef);
 					$range[$index] = $v;
-					push(@$meta_terms_ands, {
+					$meta_terms_ands->{"CustomFieldsSearchFieldRange:$op:$tag"} = {
 						'terms' => [
 							{
 								'type' => 'field.' . $f->basename,
@@ -380,7 +380,7 @@ sub query_parse {
 								$types->{$f->type}->{'column_def'} => 1,
 							},
 						},
-					});
+					};
 				}
 			}
 		}
@@ -391,22 +391,40 @@ sub query_parse {
 	my $obj_id_key = $obj_class->datasource . '_id';
 	my $meta_pkg = $obj_class->meta_pkg;
 
-	if (@$meta_terms_ands) {
+	if (%$meta_terms_ands) {
 		my $init = 0;
 		my @ids = ();
-		foreach my $terms (@$meta_terms_ands) {
-			my $args = {fetchonly => [ $obj_id_key ]};
-			if (ref($terms) eq 'HASH' && $terms->{'terms'}) {
-				$args = {%$args, %{ $terms->{'args'} }} if $terms->{'args'};
-				$terms = $terms->{'terms'};
-			}
 
-			my $iter = $meta_pkg->search(
-				$terms, $args
-			);
+		my @groups = ();
+		if (my $gs = $field_params->{'CustomFieldsSearchFieldGroup'}) {
+			foreach my $g (@$gs) {
+				my @g = split(/,/, $g);
+				my @group = ();
+				foreach my $k (keys(%$meta_terms_ands)) {
+					if (grep($k eq $_, @g)) {
+						push(@group, delete($meta_terms_ands->{$k}));
+					}
+				}
+				push(@groups, \@group) if @group;
+			}
+		}
+		push(@groups, map([$_], values(%$meta_terms_ands)));
+
+		foreach my $g (@groups) {
 			my %ids = ();
-			while (my $e = $iter->()) {
-				$ids{$e->$obj_id_key} = 1;
+			foreach my $terms (@$g) {
+				my $args = {fetchonly => [ $obj_id_key ]};
+				if (ref($terms) eq 'HASH' && $terms->{'terms'}) {
+					$args = {%$args, %{ $terms->{'args'} }} if $terms->{'args'};
+					$terms = $terms->{'terms'};
+				}
+
+				my $iter = $meta_pkg->search(
+					$terms, $args
+				);
+				while (my $e = $iter->()) {
+					$ids{$e->$obj_id_key} = 1;
+				}
 			}
 
 			if (! %ids) {
