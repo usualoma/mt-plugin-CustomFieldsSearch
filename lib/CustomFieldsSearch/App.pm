@@ -179,8 +179,10 @@ sub field_params {
 	my $orig = $app->param->Vars;
 
 	foreach my $k (keys(%$orig)) {
-		$k =~ m/([^:]*)/;
-		push(@{ $params{$1} ||= [] }, split("\0", $orig->{$k}));
+		my ($pkey) = ($k =~ m/([^:]*)/);
+		foreach my $pk (split(/,/, $pkey)) {
+			push(@{ $params{$pk} ||= [] }, split("\0", $orig->{$k}));
+		}
 	}
 
 	\%params;
@@ -221,24 +223,31 @@ sub query_parse {
 	) {
 		my ($key, $hash, $keys, $is_array) = @$tuple;
 		map({
-			my ($k, $v);
+			my %map;
 
-			if ($_ =~ m/^(\w+):(.*)/) {
-				$k = $1;
-				$v = $2;
-			}
-			elsif ($field_params->{$_}) {
-				$k = $_;
-				$v = join(',', @{ $field_params->{$_} }) || undef;
-			}
-
-			if ($k && defined($v)) {
-				if ($is_array) {
-					$hash->{$k} ||= [];
-					push(@{ $hash->{$k} }, split(',', $v));
+			if ($_ =~ m/^([\w,]+):(.*)/) {
+				my ($m1, $m2) = ($1, $2);
+				foreach my $k (split(/,/, $m1)) {
+					$map{$k} = $m2;
 				}
-				else {
-					$hash->{$k} = $v;
+			}
+			else {
+				foreach my $k (split(/,/, $_)) {
+					if ($field_params->{$k}) {
+						$map{$k} = join(',', @{ $field_params->{$k} }) || undef;
+					}
+				}
+			}
+
+			while (my ($k, $v) = each(%map)) {
+				if ($k && defined($v)) {
+					if ($is_array) {
+						$hash->{$k} ||= [];
+						push(@{ $hash->{$k} }, split(',', $v));
+					}
+					else {
+						$hash->{$k} = $v;
+					}
 				}
 			}
 		} @{ $field_params->{'CustomFieldsSearchField' . $key} });
