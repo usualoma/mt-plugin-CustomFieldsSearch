@@ -456,7 +456,7 @@ sub query_parse {
 		@and_ids = @ids;
 	}
 
-	if ($empty_search || @$meta_terms) {
+	if (@$meta_terms) {
 		my $iter = $meta_pkg->search(
 			$meta_terms, {fetchonly => [ $obj_id_key ]}
 		);
