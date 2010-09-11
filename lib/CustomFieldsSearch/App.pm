@@ -535,7 +535,7 @@ sub query_parse {
 	}
 
 	if (my $sorts = $app->param('CustomFieldsSearchSort')) {
-		$sorts =~ s/^\s*|\s*$//;
+		$sorts =~ s/^\s*|\s*$//g;
 		my @params = ();
 		foreach my $sort (split(/\s*,\s*/, $sorts)) {
 			my @param = split(/\s+/, $sort);
