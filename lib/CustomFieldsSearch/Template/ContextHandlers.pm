@@ -40,12 +40,19 @@ sub _hdlr_if_field {
 	my $app = MT->instance;
 	my $plugin = $app->component('CustomFieldsSearch');
 
-	if (! $plugin->{target_tags} || (ref $plugin->{target_tags} ne 'ARRAY')) {
-		return 1;
+	if (! $plugin->{target_tags} || (ref $plugin->{target_tags} ne 'HASH')) {
+		return $ctx->slurp(@_);
 	}
 
 	my $tag = $args->{'tag'} || '';
-	grep({ lc($_) eq lc($tag) } @{ $plugin->{target_tags} });
+	if (my $value = $plugin->{target_tags}{lc($tag)}) {
+		my $vars = $ctx->{__stash}{vars} ||= {};
+		local $vars->{__search__} = $value;
+		return $ctx->slurp(@_);
+	}
+	else {
+		return $ctx->else(@_);
+	}
 }
 
 sub _hdlr_no_search {

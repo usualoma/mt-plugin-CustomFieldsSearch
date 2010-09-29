@@ -209,6 +209,23 @@ sub query_parse {
 		@class_types = ('entry', 'page');
 	}
 
+	my $smart_string = $app->param('CustomFieldsSearchSmart') || 0;
+	my $smart_splitter = $app->param('CustomFieldsSearchSmartSplitter') || '　|\s';
+	my @search_strings;
+	my @search_strings_ids;
+	if ($smart_string) {
+		push(
+			@search_strings,
+			grep(
+				$_ !~ /^($smart_splitter)*$/s,
+				split(/($smart_splitter)+/, $app->{search_string})
+			)
+		);
+	}
+	else {
+		push(@search_strings, $app->{search_string});
+	}
+
 	my $field_params = field_params($app);
 
 	# CustomFields field matching.
@@ -281,6 +298,7 @@ sub query_parse {
 	require CustomFields::App::CMS;
 
 	my $meta_terms = [];
+	push(@$meta_terms, []) for (1..scalar(@search_strings));
 	my $meta_terms_ands = {};
 	my $types = $app->registry('customfield_types');
 
@@ -292,7 +310,20 @@ sub query_parse {
 	$field_terms->{'tag'} = [
 		@fields, @like_tags, @equals_tags, @in_tags, map(@$_, values(%range_tags))
 	];
-	$plugin->{target_tags} = [ @{ $field_terms->{'tag'} } ];
+	$plugin->{target_tags} = {};
+	foreach my $hash (\%likes, \%equals, \%ins) {
+		while (my($tag, $value) = each(%$hash)) {
+			$plugin->{target_tags}{lc($tag)} = ref $value ? $value : [ $value ];
+		}
+	}
+	while (my($op, $hash) = each(%ranges)) {
+		while (my($tag, $value) = each(%$hash)) {
+			$tag = lc($tag);
+			$plugin->{target_tags}{$tag} ||= [];
+			push(@{ $plugin->{target_tags}{$tag} }, "$op $value");
+		}
+	}
+
 	if (! @{ $field_terms->{'tag'} }) {
 		delete($field_terms->{'tag'});
 	}
@@ -308,17 +339,19 @@ sub query_parse {
 
 		if (! $empty_search) {
 			if (grep({ $_ eq $tag } @fields)) {
-				push(@$meta_terms, '-or', [
-					{
-						'type' => 'field.' . $f->basename,
-					},
-					'-and',
-					{
-						$types->{$f->type}->{'column_def'} => {
-							'like' => '%' . $app->{search_string} . '%',
+				for (my $i = 0; $i < scalar(@search_strings); $i++) {
+					push(@{ $meta_terms->[$i] }, '-or', [
+						{
+							'type' => 'field.' . $f->basename,
 						},
-					},
-				]);
+						'-and',
+						{
+							$types->{$f->type}->{'column_def'} => {
+								'like' => '%' . $search_strings[$i] . '%',
+							},
+						},
+					]);
+				}
 			}
 		}
 
@@ -385,7 +418,7 @@ sub query_parse {
 			}
 		}
 	}
-	shift(@$meta_terms);
+	shift(@$_) for @$meta_terms;
 
 	my $obj_class = $app->model($obj_type);
 	my $obj_id_key = $obj_class->datasource . '_id';
@@ -447,22 +480,45 @@ sub query_parse {
 			return { terms => { id => 0 } };
 		}
 
-		if ($empty_search || @$meta_terms) {
-			push(@$meta_terms,
-				(@$meta_terms ? '-and' : ()),
-				{ $obj_id_key => \@ids }
-			);
+		if ($empty_search || @{ $meta_terms->[0] }) {
+			for (my $i = 0; $i < scalar(@$meta_terms); $i++) {
+				if (@{ $meta_terms->[$i] }) {
+					$meta_terms->[$i] = [ $meta_terms->[$i], '-and' ];
+				}
+				push(@{ $meta_terms->[$i] }, { $obj_id_key => \@ids });
+
+			}
 		}
 		@and_ids = @ids;
 	}
 
-	if (@$meta_terms) {
-		my $iter = $meta_pkg->search(
-			$meta_terms, {fetchonly => [ $obj_id_key ]}
-		);
+	if ($empty_search || @{ $meta_terms->[0] }) {
 		my %ids = ();
-		while (my $e = $iter->()) {
-			$ids{$e->$obj_id_key} = 1;
+
+		if ($empty_search) {
+			$ids{$_} = 1 for @and_ids;
+		}
+		else {
+			for (my $i = 0; $i < scalar(@$meta_terms); $i++) {
+				my $iter = $meta_pkg->search(
+					$meta_terms->[$i], {fetchonly => [ $obj_id_key ]}
+				);
+				my (%tmp);
+				while (my $e = $iter->()) {
+					$tmp{$e->$obj_id_key} = 1;
+				}
+
+				$search_strings_ids[$i] = [ keys(%tmp) ];
+
+				if ($i == 0) {
+					%ids = %tmp;
+				}
+				else {
+					foreach my $k (keys(%ids)) {
+						delete($ids{$k}) unless $tmp{$k};
+					}
+				}
+			}
 		}
 
 		if (%ids) {
@@ -487,20 +543,34 @@ sub query_parse {
 			delete $columns{$tag_field{$tag}};
 		}
 		else {
-			push(@{ $plugin->{target_tags} }, $tag);
+			$plugin->{target_tags}{lc($tag)} = \@search_strings;
 		}
 	}
 
 	my @column_names = keys %columns;
 
 	if (! $empty_search && @column_names) {
-		my $tmp = [];
+		my $tmps = [];
+		push(@$tmps, []) for (1..scalar(@search_strings));
 		foreach my $c (@column_names) {
-			push(@$tmp, '-or', { $c => {
-				'like' => '%' . $app->{search_string} . '%',
-			}});
+			for (my $i = 0; $i < scalar(@search_strings); $i++) {
+				push(@{ $tmps->[$i] }, '-or', [
+					(@{ $search_strings_ids[$i] }
+						?  ( { 'id' => $search_strings_ids[$i] }, '-or' )
+						: ()
+					),
+					{ $c => {
+						'like' => '%' . $search_strings[$i] . '%',
+					}}
+				]);
+			}
 		}
-		shift(@$tmp);
+		shift(@$_) for @$tmps;
+
+		my @tmp_ands = ();
+		foreach (@$tmps) {
+			push(@tmp_ands, '-and', $_);
+		}
 
 		push(@$terms, (scalar(@$terms) ? '-or' : ()),
 			[
@@ -509,8 +579,7 @@ sub query_parse {
 					'class' => \@class_types,
 					'blog_id' => $blog_ids,
 				},
-				'-and',
-				$tmp
+				@tmp_ands,
 			]
 		);
 	}

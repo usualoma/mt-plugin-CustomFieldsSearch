@@ -1,6 +1,6 @@
 #plugin name
 name: CustomFieldsSearch
-version: 0.2.4
+version: 0.2.5
 
 #about this plugin
 description: <__trans phrase="A plugin enable to search by CustromFields data.">
@@ -19,5 +19,5 @@ init_request: CustomFieldsSearch::App::init_request
 tags:
     help_url: http://tec.toi-planning.net/mt/customfieldssearch/tags#%t
     block:
-        IfCustomFieldsSearchField?: CustomFieldsSearch::Template::ContextHandlers::_hdlr_if_field
+        IfCustomFieldsSearchField: CustomFieldsSearch::Template::ContextHandlers::_hdlr_if_field
         CustomFieldsNoSearch?: CustomFieldsSearch::Template::ContextHandlers::_hdlr_no_search
