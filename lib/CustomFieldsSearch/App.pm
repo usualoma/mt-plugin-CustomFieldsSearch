@@ -251,12 +251,13 @@ sub query_parse {
 	# CustomFields field matching.
 	my @fields = grep({ $_ } $app->param('CustomFieldsSearchField'));
 
-	my (%likes, %equals, %ins) = ();
-	my (@like_tags, @equals_tags, @in_tags) = ();
+	my (%likes, %equals, %ins, %not_ins) = ();
+	my (@like_tags, @equals_tags, @in_tags, @not_in_tags) = ();
 	foreach my $tuple (
 		['Like', \%likes, \@like_tags, 0],
 		['Equals', \%equals, \@equals_tags, 0],
-		['In', \%ins, \@in_tags, 1]
+		['In', \%ins, \@in_tags, 1],
+		['NotIn', \%not_ins, \@not_in_tags, 1]
 	) {
 		my ($key, $hash, $keys, $is_array) = @$tuple;
 		map({
@@ -309,11 +310,13 @@ sub query_parse {
 							$field_params->{$tag} ||
 							$field_params->{"$tag:$op_orig"};
 						if ($values) {
-							$value =
-								join(',', @{ $field_params->{$tag} }) || undef;
+							$value = join(',', @$values);
+						}
+						if (! defined($value) || $value eq '') {
+							$value = undef;
 						}
 					}
-					push(@{ $ranges{$op}{$tag} }, $value);
+					push(@{ $ranges{$op}{$tag} }, $value) if defined($value);
 				}
 			}
 		}
@@ -338,10 +341,11 @@ sub query_parse {
 	};
 
 	$field_terms->{'tag'} = [
-		@fields, @like_tags, @equals_tags, @in_tags, map(@$_, values(%range_tags))
+		@fields, @like_tags, @equals_tags, @in_tags, @not_in_tags,
+		map(@$_, values(%range_tags))
 	];
 	$plugin->{target_tags} = {};
-	foreach my $hash (\%likes, \%equals, \%ins) {
+	foreach my $hash (\%likes, \%equals, \%ins, \%not_ins) {
 		while (my($tag, $value) = each(%$hash)) {
 			$plugin->{target_tags}{lc($tag)} = ref $value ? $value : [ $value ];
 		}
@@ -414,6 +418,19 @@ sub query_parse {
 					},
 				];
 			}
+		}
+		if (grep({ $_ eq $tag } @not_in_tags)) {
+			$meta_terms_ands->{"CustomFieldsSearchFieldNotIn:$tag"} = [
+				{
+					'type' => 'field.' . $f->basename,
+				},
+				'-and',
+				{
+					$types->{$f->type}->{'column_def'} => {
+						not => $not_ins{$tag},
+					},
+				},
+			];
 		}
 
 		foreach my $tuple (
