@@ -309,7 +309,7 @@ sub query_parse {
 		if ($_ =~ m/^(\w+):(.*)/) {
 			my $tag = $1;
 			foreach (split(',', $2)) {
-				if (m/([<>=]+)(\d*)/) {
+				if (m/([<>=]+)([\d\s\/:-]*)/) {
 					my ($op, $value) = ($1, $2);
 					my $op_orig = $op;
 					# "=>" is replaced to ">=" and "=<" is replaced to "<="
