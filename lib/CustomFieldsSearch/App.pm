@@ -232,9 +232,12 @@ sub query_parse {
 		for my $field (@$fields) {
 			for my $f (split(',', $field)) {
 				my @values = ();
-				for my $i (0..5) {
-					$values[$i] = $field_params->{"$f($i)"} ?
-						join('', @{ $field_params->{"$f($i)"} }) : undef;
+				for my $i (1..6) {
+					push(
+						@values,
+						$field_params->{"$f($i)"} ?
+							join('', @{ $field_params->{"$f($i)"} }) : undef
+					);
 				}
 				if ($values[0] && $values[1] && $values[2]) {
 					$field_params->{$f} = [sprintf(
