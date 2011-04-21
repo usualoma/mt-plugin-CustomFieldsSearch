@@ -366,11 +366,15 @@ sub query_parse {
 			$plugin->{target_tags}{lc($tag)} = ref $value ? $value : [ $value ];
 		}
 	}
-	while (my($op, $hash) = each(%ranges)) {
+	foreach my $op (reverse(sort(keys(%ranges)))) {
+		my $hash = $ranges{$op};
 		while (my($tag, $value) = each(%$hash)) {
 			$tag = lc($tag);
 			$plugin->{target_tags}{$tag} ||= [];
-			push(@{ $plugin->{target_tags}{$tag} }, "$op $value");
+			push(
+				@{ $plugin->{target_tags}{$tag} },
+				$op . ' ' . join(',', @$value)
+			);
 		}
 	}
 
