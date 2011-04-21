@@ -1,0 +1,7 @@
+config.yaml
+lib/CustomFieldsSearch/App.pm
+lib/CustomFieldsSearch/L10N.pm
+lib/CustomFieldsSearch/L10N/en_us.pm
+lib/CustomFieldsSearch/L10N/ja.pm
+lib/CustomFieldsSearch/Template/ContextHandlers.pm
+LICENSE
