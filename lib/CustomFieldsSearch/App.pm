@@ -277,12 +277,18 @@ sub query_parse {
 		if ($_ =~ m/^(\w+):(.*)/) {
 			my $tag = $1;
 			foreach (split(',', $2)) {
-				if (m/([<>=]*)(\d+)/) {
+				if (m/([<>=]+)(\d*)/) {
 					my ($op, $value) = ($1, $2);
 					# "=>" is replaced to ">=" and "=<" is replaced to "<="
 					$op =~ s/=(<|>)/$1=/;
 					$ranges{$op} ||= {};
 					$ranges{$op}{$tag} ||= [];
+					if (
+						(! defined($value) || $value eq '') &&
+						$field_params->{$k}
+					) {
+						$value = join(',', @{ $field_params->{$k} }) || undef;
+					}
 					push(@{ $ranges{$op}{$tag} }, $value);
 				}
 			}
