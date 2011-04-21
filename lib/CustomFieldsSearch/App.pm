@@ -613,7 +613,7 @@ sub query_parse {
 		foreach my $c (@column_names) {
 			for (my $i = 0; $i < scalar(@search_strings); $i++) {
 				push(@{ $tmps->[$i] }, '-or', [
-					(@{ $search_strings_ids[$i] }
+					(($search_strings_ids[$i] && @{ $search_strings_ids[$i] })
 						?  ( { 'id' => $search_strings_ids[$i] }, '-or' )
 						: ()
 					),
