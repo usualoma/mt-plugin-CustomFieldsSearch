@@ -229,7 +229,7 @@ sub query_parse {
 	my $field_params = field_params($app);
 
 	if (my $fields = $field_params->{'CustomFieldsSearchDateTimeField'}) {
-		for my $field (@$field) {
+		for my $field (@$fields) {
 			for my $f (split(',', $field)) {
 				my @values = ();
 				for my $i (0..5) {
@@ -296,15 +296,19 @@ sub query_parse {
 			foreach (split(',', $2)) {
 				if (m/([<>=]+)(\d*)/) {
 					my ($op, $value) = ($1, $2);
+					my $op_orig = $op;
 					# "=>" is replaced to ">=" and "=<" is replaced to "<="
 					$op =~ s/=(<|>)/$1=/;
 					$ranges{$op} ||= {};
 					$ranges{$op}{$tag} ||= [];
-					if (
-						(! defined($value) || $value eq '') &&
-						$field_params->{$k}
-					) {
-						$value = join(',', @{ $field_params->{$k} }) || undef;
+					if (! defined($value) || $value eq '') {
+						my $values =
+							$field_params->{$tag} ||
+							$field_params->{"$tag:$op_orig"};
+						if ($values) {
+							$value =
+								join(',', @{ $field_params->{$tag} }) || undef;
+						}
 					}
 					push(@{ $ranges{$op}{$tag} }, $value);
 				}
