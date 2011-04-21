@@ -228,6 +228,23 @@ sub query_parse {
 
 	my $field_params = field_params($app);
 
+	if (my $fields = $field_params->{'CustomFieldsSearchDateTimeField'}) {
+		for my $field (@$field) {
+			for my $f (split(',', $field)) {
+				my @values = ();
+				for my $i (0..5) {
+					$values[$i] = $field_params->{"$f($i)"} ?
+						join('', @{ $field_params->{"$f($i)"} }) : undef;
+				}
+				if ($values[0] && $values[1] && $values[2]) {
+					$field_params->{$f} = [sprintf(
+						'%04d-%02d-%02d %02d:%02d:%02d', @values
+					)];
+				}
+			}
+		}
+	}
+
 	# CustomFields field matching.
 	my @fields = grep({ $_ } $app->param('CustomFieldsSearchField'));
 
