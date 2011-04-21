@@ -248,6 +248,17 @@ sub query_parse {
 		}
 	}
 
+	if (my $aliases = $field_params->{'CustomFieldsSearchAlias'}) {
+		for my $alias (@$aliases) {
+			for my $a (split(',', $alias)) {
+                my ($to, $from) = split(':', $a);
+                if ($to && $from) {
+                    $field_params->{$to} = $field_params->{$from};
+                }
+			}
+		}
+	}
+
 	# CustomFields field matching.
 	my @fields = grep({ $_ } $app->param('CustomFieldsSearchField'));
 
