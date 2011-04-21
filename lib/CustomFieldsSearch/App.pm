@@ -210,17 +210,22 @@ sub query_parse {
 	}
 
 	my $smart_string = $app->param('CustomFieldsSearchSmart') || 0;
-	my $smart_splitter = $app->param('CustomFieldsSearchSmartSplitter') || '　|\s';
+	my $smart_splitter =
+		$app->param('CustomFieldsSearchSmartSplitter') || '　|\s';
+	my $smart_enclosure =
+		$app->param('CustomFieldsSearchSmartEnclosure') || '"';
 	my @search_strings;
 	my @search_strings_ids;
 	if ($smart_string) {
-		push(
-			@search_strings,
-			grep(
-				$_ !~ /^($smart_splitter)*$/s,
-				split(/($smart_splitter)+/, $app->{search_string})
+		my $search = $app->{search_string};
+		while ($search =~ m/
+			(?|
+				$smart_enclosure([^$smart_enclosure]+?)$smart_enclosure|
+				(.*?)(?:$smart_splitter|\z)
 			)
-		);
+		/xmsg) {
+			push(@search_strings, $1) if $1;
+		}
 	}
 	else {
 		push(@search_strings, $app->{search_string});
