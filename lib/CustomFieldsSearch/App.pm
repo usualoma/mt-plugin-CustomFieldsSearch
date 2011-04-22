@@ -211,7 +211,7 @@ sub query_parse {
 
 	my $smart_string = $app->param('CustomFieldsSearchSmart') || 0;
 	my $smart_splitter =
-		$app->param('CustomFieldsSearchSmartSplitter') || '　|\s';
+		$app->param('CustomFieldsSearchSmartSplitter') || '\s';
 	my $smart_enclosure =
 		$app->param('CustomFieldsSearchSmartEnclosure') || '"';
 	my @search_strings;
@@ -219,12 +219,11 @@ sub query_parse {
 	if ($smart_string) {
 		my $search = $app->{search_string};
 		while ($search =~ m/
-			(?|
-				$smart_enclosure([^$smart_enclosure]+?)$smart_enclosure|
-				(.*?)(?:$smart_splitter|\z)
-			)
+			$smart_enclosure([^$smart_enclosure]+?)$smart_enclosure|
+			(.*?)(?:$smart_splitter|\z)
 		/xmsg) {
-			push(@search_strings, $1) if $1;
+			my $str = $1 || $2;
+			push(@search_strings, $str) if $str;
 		}
 	}
 	else {
@@ -601,7 +600,9 @@ sub query_parse {
 
 	# Default field matching.
 
-	my @ignores = $app->param('CustomFieldsSearchIgnore');
+	my @ignores = map({
+		$_ =~ s/^mt:?//i; $_
+	} $app->param('CustomFieldsSearchIgnore'));
 	foreach my $tag (keys(%tag_field)) {
 		if (
 			(grep({ lc($_) eq $tag } @ignores))
@@ -719,7 +720,9 @@ sub query_parse {
 sub _search_hit {
 	my ($fields, $hit_method, $app, $entry) = @_;
 
-	my @ignores = $app->param('CustomFieldsSearchIgnore');
+	my @ignores = map({
+		$_ =~ s/^mt:?//i; $_
+	} $app->param('CustomFieldsSearchIgnore'));
 	if (@ignores) {
 		my $str = '';
 		foreach my $tag (keys(%tag_field)) {
