@@ -32,6 +32,7 @@
 package CustomFieldsSearch::Template::ContextHandlers;
 
 use strict;
+use warnings;
 
 sub _hdlr_if_field {
 	my($ctx, $args, $cond) = @_;

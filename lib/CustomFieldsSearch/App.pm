@@ -32,6 +32,7 @@
 package CustomFieldsSearch::App;
 
 use strict;
+use warnings;
 
 my %tag_field = qw(
 	entrytitle title
