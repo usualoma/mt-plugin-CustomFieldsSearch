@@ -352,7 +352,7 @@ sub query_parse {
 	my $types = $app->registry('customfield_types');
 
 	my $field_terms = {
-		obj_type => $obj_type,
+		obj_type => \@class_types,
 		blog_id => [@$blog_ids, 0],
 	};
 
@@ -690,7 +690,7 @@ sub query_parse {
 		}
 
 		my $field_terms = {
-			obj_type => $obj_type,
+			obj_type => \@class_types,
 			blog_id => [@$blog_ids, 0],
 			tag => [ map($_->[0], @params) ],
 		};
