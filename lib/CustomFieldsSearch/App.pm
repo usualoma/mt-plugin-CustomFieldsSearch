@@ -41,67 +41,84 @@ my %tag_field = qw(
 	entrykeywords keywords
 );
 
+sub enabled {
+    my ($app) = @_;
+    $app ||= MT->instance;
+    $app->can('param') && $app->param('CustomFieldsSearch');
+}
+
+sub is_empty_search {
+    my ($app) = @_;
+    $app ||= MT->instance;
+    !$app->param('searchTerms') && !$app->param('search');
+}
+
+sub init_app {
+    my ( $cb, $app ) = @_;
+
+    require MT::App::Search;
+
+    local $SIG{__WARN__} = sub { };
+    if ( $MT::VERSION < 4.2 && enabled($app) ) {
+        my @fields = grep( {$_} $app->param('CustomFieldsSearchField') );
+        if ( !@fields ) {
+            my $cf = MT->component('CustomFields');
+            $cf->{search_hit_method} = \&MT::App::Search::_search_hit;
+            *MT::App::Search::_search_hit = sub {
+                require CustomFields::App::Search;
+                my $method_ref
+                    = CustomFields::App::Search->can('_search_hit');
+                return $method_ref->( $cf, @_ );
+            };
+        }
+        else {
+            my $hit_method = \&MT::App::Search::_search_hit;
+            *MT::App::Search::_search_hit = sub {
+                return &_search_hit( \@fields, $hit_method, @_ );
+            };
+        }
+    }
+    else {
+        MT::Template::Context->add_conditional_tag(
+            'NoSearchResults' => sub {
+                my ( $ctx, $args, $cond ) = @_;
+                return 1 unless is_empty_search($app);
+                $ctx->stash('count') ? 0 : 1;
+            }
+        );
+
+        my $query_parse = \&MT::App::Search::query_parse;
+        *MT::App::Search::query_parse = sub {
+            enabled($app)
+                ? &query_parse( is_empty_search($app), @_ )
+                : $query_parse->(@_);
+        };
+
+        my $execute = \&MT::App::Search::execute;
+        *MT::App::Search::execute = sub {
+            enabled($app)
+                ? &execute( $execute, is_empty_search($app), @_ )
+                : $execute->(@_);
+        };
+
+        require MT::Template::Context::Search;
+        my $context_script = \&MT::Template::Context::Search::context_script;
+        *MT::Template::Context::Search::context_script = sub {
+            enabled($app) ? context_script(@_) : $context_script->(@_);
+        };
+    }
+}
+
 sub init_request {
-	my ($plugin, $app) = @_;
+    my ( $plugin, $app ) = @_;
 
-	if ($app->isa('MT::App::Search')) {
-		my $enable = $app->param('CustomFieldsSearch');
-
-		if ($enable) {
-			local $SIG{__WARN__} = sub {  }; 
-			if ($MT::VERSION < 4.2) {
-				my @fields = grep(
-					{ $_ } $app->param('CustomFieldsSearchField')
-				);
-				if (! @fields) {
-					my $cf = MT->component('CustomFields');
-					$cf->{search_hit_method} = \&MT::App::Search::_search_hit;
-					*MT::App::Search::_search_hit = sub {
-						require CustomFields::App::Search;
-						my $method_ref = CustomFields::App::Search->can(
-							'_search_hit'
-						);
-						return $method_ref->($cf, @_);
-					};
-				}
-				else {
-					my $hit_method = \&MT::App::Search::_search_hit;
-					*MT::App::Search::_search_hit = sub {
-						return &_search_hit(\@fields, $hit_method, @_);
-					};
-				}
-			}
-			else {
-				my $empty_search = 0;
-				if (! $app->param('searchTerms') && ! $app->param('search')) {
-					$empty_search = 1;
-					$app->param('search', 'CustomFieldsSearch');
-
-					MT::Template::Context->add_conditional_tag(
-						'NoSearchResults' => sub {
-							my($ctx, $args, $cond) = @_;
-							$ctx->stash('count') ? 0 : 1;
-						}
-					);
-				}
-
-				my $query_parse = \&MT::App::Search::query_parse;
-				*MT::App::Search::query_parse = sub {
-					return &query_parse($empty_search, @_);
-				};
-
-				my $execute = \&MT::App::Search::execute;
-				*MT::App::Search::execute = sub {
-					return &execute($execute, $empty_search, @_);
-				};
-
-				require MT::Template::Context::Search;
-				my $context_script = \&MT::Template::Context::Search::context_script;
-				*MT::Template::Context::Search::context_script = \&context_script;
-
-			}
-		}
-	}
+    if ( $app->isa('MT::App::Search') && enabled($app) ) {
+        if ( $MT::VERSION >= 4.2 ) {
+            if ( is_empty_search($app) ) {
+                $app->param( 'search', 'CustomFieldsSearch' );
+            }
+        }
+    }
 }
 
 sub context_script {

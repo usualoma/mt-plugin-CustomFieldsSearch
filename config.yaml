@@ -1,6 +1,6 @@
 #plugin name
 name: CustomFieldsSearch
-version: 1.0.3
+version: 1.1.0
 
 #about this plugin
 description: <__trans phrase="A plugin enable to search by CustromFields data.">
@@ -13,6 +13,7 @@ doc_link: http://tec.toi-planning.net/mt/customfieldssearch#manual
 l10n_class: CustomFieldsSearch::L10N
 
 # hook
+init_app: CustomFieldsSearch::App::init_app
 init_request: CustomFieldsSearch::App::init_request
 
 #tag
