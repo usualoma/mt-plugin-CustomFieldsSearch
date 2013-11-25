@@ -1,6 +1,6 @@
 #plugin name
 name: CustomFieldsSearch
-version: 1.1.0
+version: 1.1.1
 
 #about this plugin
 description: <__trans phrase="A plugin enable to search by CustromFields data.">
@@ -22,3 +22,4 @@ tags:
     block:
         IfCustomFieldsSearchField: CustomFieldsSearch::Template::ContextHandlers::_hdlr_if_field
         CustomFieldsNoSearch?: CustomFieldsSearch::Template::ContextHandlers::_hdlr_no_search
+        NoSearchResults?: CustomFieldsSearch::App::_hdlr_no_search_results

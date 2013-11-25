@@ -53,6 +53,12 @@ sub is_empty_search {
     !$app->param('searchTerms') && !$app->param('search');
 }
 
+sub _hdlr_no_search_results {
+    my ( $ctx, $args, $cond ) = @_;
+    return 1 unless is_empty_search();
+    $ctx->stash('count') ? 0 : 1;
+}
+
 sub init_app {
     my ( $cb, $app ) = @_;
 
@@ -79,14 +85,6 @@ sub init_app {
         }
     }
     else {
-        MT::Template::Context->add_conditional_tag(
-            'NoSearchResults' => sub {
-                my ( $ctx, $args, $cond ) = @_;
-                return 1 unless is_empty_search($app);
-                $ctx->stash('count') ? 0 : 1;
-            }
-        );
-
         my $query_parse = \&MT::App::Search::query_parse;
         *MT::App::Search::query_parse = sub {
             enabled($app)
