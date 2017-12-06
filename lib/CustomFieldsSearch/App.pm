@@ -50,7 +50,8 @@ sub enabled {
 sub is_empty_search {
     my ($app) = @_;
     $app ||= MT->instance;
-    !$app->param('searchTerms') && !$app->param('search');
+    $app->request('CustomFieldsSearchIsEmpty') ||
+        (!$app->param('searchTerms') && !$app->param('search'));
 }
 
 sub _hdlr_no_search_results {
@@ -113,6 +114,7 @@ sub init_request {
     if ( $app->isa('MT::App::Search') && enabled($app) ) {
         if ( $MT::VERSION >= 4.2 ) {
             if ( is_empty_search($app) ) {
+                $app->request('CustomFieldsSearchIsEmpty', 1);
                 $app->param( 'search', 'CustomFieldsSearch' );
             }
         }
