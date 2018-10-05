@@ -133,9 +133,10 @@ sub context_script {
 	my @ignores = ('startIndex', 'limit', 'offset', 'format', 'page');
 	my $q = new CGI('');
 	if ($app->isa('MT::App::Search')) {
-		foreach my $p ($app->param) {
+        local $CGI::LIST_CONTEXT_WARN = 0;
+		foreach my $p ($app->multi_param) {
 			if (! grep({ $_ eq $p } @ignores)) {
-				$q->param($p, $app->param($p));
+				$q->param($p, $app->multi_param($p));
 			}
 		}
 	}
@@ -222,7 +223,7 @@ sub query_parse {
 	}
 	my $plugin = $app->component('CustomFieldsSearch');
 
-	my @class_types = $app->param('CustomFieldsSearchClassType');
+	my @class_types = $app->multi_param('CustomFieldsSearchClassType');
 	if (! @class_types) {
 		@class_types = ('entry', 'page');
 	}
@@ -282,7 +283,7 @@ sub query_parse {
 	}
 
 	# CustomFields field matching.
-	my @fields = grep({ $_ } $app->param('CustomFieldsSearchField'));
+	my @fields = grep({ $_ } $app->multi_param('CustomFieldsSearchField'));
 
 	my (%likes, %equals, %ins, %not_ins) = ();
 	my (@like_tags, @equals_tags, @in_tags, @not_in_tags) = ();
@@ -620,7 +621,7 @@ sub query_parse {
 
 	my @ignores = map({
 		$_ =~ s/^mt:?//i; $_
-	} $app->param('CustomFieldsSearchIgnore'));
+	} $app->multi_param('CustomFieldsSearchIgnore'));
 	foreach my $tag (keys(%tag_field)) {
 		if (
 			(grep({ lc($_) eq $tag } @ignores))
@@ -740,7 +741,7 @@ sub _search_hit {
 
 	my @ignores = map({
 		$_ =~ s/^mt:?//i; $_
-	} $app->param('CustomFieldsSearchIgnore'));
+	} $app->multi_param('CustomFieldsSearchIgnore'));
 	if (@ignores) {
 		my $str = '';
 		foreach my $tag (keys(%tag_field)) {
