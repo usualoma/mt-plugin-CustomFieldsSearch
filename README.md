@@ -12,3 +12,4 @@ Supported environments
 ----------------------
 
 * 7.x
+* 8.x
